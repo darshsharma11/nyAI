@@ -16,8 +16,15 @@ const Navbar = ({ isLoggedIn, onLogout }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
+  const isAboutPage = location.pathname === '/about';
+  const isLawyersPage = location.pathname === '/lawyers';
   const isLearnPage = location.pathname === '/learn';
   const isChatPage = location.pathname === '/chat';
+
+  // Landing routes (Public)
+  const isLandingSection = ['/', '/about', '/login', '/signup'].includes(location.pathname);
+  // Product routes (Authenticated)
+  const isProductSection = ['/chat', '/lawyers', '/learn', '/dashboard', '/documents'].includes(location.pathname);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -27,21 +34,27 @@ const Navbar = ({ isLoggedIn, onLogout }) => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const navLinks = [
+  const landingLinks = [
     { name: 'Home', path: '/' },
-    { name: 'Features', path: '/#features' },
-    { name: 'Lawyers', path: '/lawyers' },
     { name: 'About', path: '/about' },
-    { name: 'LexArena ⚖️', path: '/learn' },
+    { name: 'Features', path: '/#features' },
   ];
 
-  // On /learn and /chat pages, always show dark navbar (no transparent state)
-  const navDark = isLearnPage || isChatPage || isScrolled;
-  // On /learn page, hide global navbar when scrolled down
-  const hideNav = isLearnPage && isScrolled;
+  const productLinks = [
+    { name: 'AI Tools', path: '/chat' },
+    { name: 'Lawyers', path: '/lawyers' },
+    { name: 'LexArena ⚖️', path: '/learn' },
+    { name: 'Dashboard', path: '/dashboard' },
+  ];
+
+  const navLinks = isProductSection ? productLinks : landingLinks;
+
+  // Navbar Styling Logic
+  const navDark = isProductSection || isAboutPage || isLawyersPage || isScrolled;
+  const hideNav = false; // Always visible as per request
 
   return (
-    <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${navDark ? 'bg-forest/95 backdrop-blur-md py-3 shadow-lg' : 'bg-transparent py-5'}`}
+    <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${navDark ? (isProductSection ? 'bg-forest shadow-lg' : 'bg-forest/95 backdrop-blur-md shadow-lg') : 'bg-transparent'} py-3`}
       style={{ transform: hideNav ? 'translateY(-100%)' : 'translateY(0)' }}
     >
       <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
@@ -55,11 +68,25 @@ const Navbar = ({ isLoggedIn, onLogout }) => {
         {/* Desktop Nav */}
         <div className="hidden md:flex items-center gap-8">
           {navLinks.map((link) => (
-            <Link key={link.name} to={link.path} className="text-offwhite/80 hover:text-lime transition-colors font-medium">
+            <Link 
+              key={link.name} 
+              to={link.path} 
+              onClick={(e) => {
+                if (link.name === 'Home' && location.pathname === '/') {
+                  e.preventDefault();
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                } else if (link.name === 'Features' && location.pathname === '/') {
+                  e.preventDefault();
+                  const target = document.getElementById('features');
+                  if (target) target.scrollIntoView({ behavior: 'smooth' });
+                }
+              }}
+              className="text-offwhite/80 hover:text-lime transition-colors font-medium cursor-pointer"
+            >
               {link.name}
             </Link>
           ))}
-          {isLoggedIn && (
+          {isLoggedIn && !isProductSection && (
             <Link to="/chat" className="text-offwhite/80 hover:text-lime transition-colors font-medium">
               Dashboard
             </Link>
@@ -69,23 +96,26 @@ const Navbar = ({ isLoggedIn, onLogout }) => {
         <div className="hidden md:flex items-center gap-4">
           <button className="text-offwhite hover:text-white font-medium p-2"><Globe size={20} /></button>
           
-          {isLoggedIn ? (
-            <>
-              <div className="w-px h-6 bg-white/10 mx-2"></div>
-              <button 
-                onClick={onLogout}
-                className="text-offwhite hover:text-white font-bold flex items-center gap-2 px-4 transition-all"
-              >
-                <LogOut size={18} className="text-lime" /> Logout
-              </button>
-            </>
-          ) : (
+          {!isLoggedIn && (
             <>
               <Link to="/login" className="text-offwhite hover:text-white font-medium px-4">Login</Link>
               <Link to="/signup" className="bg-lime hover:bg-lime-hover text-forest font-bold px-6 py-2.5 rounded-lg transition-all shadow-md">
                 Try for Free
               </Link>
             </>
+          )}
+
+          {isLoggedIn && (
+            <div className="flex items-center gap-3 pl-4 border-l border-white/10">
+              <div className="w-8 h-8 rounded-full bg-lime flex items-center justify-center text-forest font-bold text-xs uppercase">YS</div>
+              <button 
+                onClick={onLogout}
+                className="text-offwhite/60 hover:text-white transition-colors"
+                title="Logout"
+              >
+                <LogOut size={18} />
+              </button>
+            </div>
           )}
         </div>
 
@@ -105,18 +135,34 @@ const Navbar = ({ isLoggedIn, onLogout }) => {
             className="absolute top-full left-0 w-full bg-forest border-t border-white/10 p-6 flex flex-col gap-6 md:hidden"
           >
             {navLinks.map((link) => (
-              <Link key={link.name} to={link.path} onClick={() => setMobileMenuOpen(false)} className="text-xl text-offwhite">
+              <Link 
+                key={link.name} 
+                to={link.path} 
+                onClick={(e) => {
+                  setMobileMenuOpen(false);
+                  if (link.name === 'Home' && location.pathname === '/') {
+                    e.preventDefault();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  } else if (link.name === 'Features' && location.pathname === '/') {
+                    e.preventDefault();
+                    const target = document.getElementById('features');
+                    if (target) target.scrollIntoView({ behavior: 'smooth' });
+                  }
+                }} 
+                className="text-xl text-offwhite"
+              >
                 {link.name}
               </Link>
             ))}
-            {isLoggedIn && (
-              <Link to="/chat" onClick={() => setMobileMenuOpen(false)} className="text-xl text-offwhite">
-                Dashboard
-              </Link>
-            )}
+            
             <div className="flex flex-col gap-4 pt-4 border-t border-white/10">
               {isLoggedIn ? (
-                <button onClick={() => { onLogout(); setMobileMenuOpen(false); }} className="text-lime text-xl font-bold text-left">Logout</button>
+                <button 
+                  onClick={() => { onLogout(); setMobileMenuOpen(false); }} 
+                  className="flex items-center gap-3 text-lime text-xl font-bold py-2"
+                >
+                  <LogOut size={20} /> Logout
+                </button>
               ) : (
                 <>
                   <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="text-offwhite text-lg font-medium">Login</Link>
