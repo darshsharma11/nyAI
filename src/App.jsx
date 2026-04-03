@@ -17,6 +17,7 @@ const Navbar = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
   const isLearnPage = location.pathname === '/learn';
+  const isChatPage = location.pathname === '/chat';
 
   useEffect(() => {
     const handleScroll = () => {
@@ -34,8 +35,8 @@ const Navbar = () => {
     { name: 'LexArena ⚖️', path: '/learn' },
   ];
 
-  // On /learn page, always show dark navbar (no transparent state)
-  const navDark = isLearnPage || isScrolled;
+  // On /learn and /chat pages, always show dark navbar (no transparent state)
+  const navDark = isLearnPage || isChatPage || isScrolled;
   // On /learn page, hide global navbar when scrolled down
   const hideNav = isLearnPage && isScrolled;
 
@@ -276,6 +277,7 @@ function App() {
   }, [location.pathname]);
 
   const isAuthPage = location.pathname === '/login' || location.pathname === '/signup';
+  const isChatPage = location.pathname === '/chat';
 
   return (
     <div className="min-h-screen bg-offwhite selection:bg-lime selection:text-forest">
@@ -291,8 +293,8 @@ function App() {
         <Route path="/signup" element={<AuthPage />} />
         <Route path="/learn" element={<LegalLiteracyApp />} />
       </Routes>
-      {!isAuthPage && <Footer />}
-      {!isAuthPage && <SOSButton />}
+      {!(isAuthPage || isChatPage) && <Footer />}
+      {!(isAuthPage || isChatPage) && <SOSButton />}
     </div>
   );
 }
