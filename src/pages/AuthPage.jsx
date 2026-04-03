@@ -17,7 +17,7 @@ const AuthPage = () => {
     // Simulate auth
     setTimeout(() => {
       setIsLoading(false);
-      navigate('/dashboard');
+      navigate('/chat');
     }, 1500);
   };
 

@@ -18,6 +18,15 @@ const Navbar = () => {
   const location = useLocation();
   const isLearnPage = location.pathname === '/learn';
   const isChatPage = location.pathname === '/chat';
+  const isAboutPage = location.pathname === '/about';
+  const isLawyersPage = location.pathname === '/lawyers';
+  const isDashboardPage = location.pathname === '/dashboard';
+  const isDocumentsPage = location.pathname === '/documents';
+
+  // Landing routes (Public)
+  const isLandingSection = ['/', '/about', '/login', '/signup'].includes(location.pathname);
+  // Product routes (Authenticated)
+  const isProductSection = ['/chat', '/lawyers', '/learn', '/dashboard', '/documents'].includes(location.pathname);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -27,21 +36,33 @@ const Navbar = () => {
     return () => window.removeEventListener('scroll', handleScroll);
   }, []);
 
-  const navLinks = [
+  const landingLinks = [
     { name: 'Home', path: '/' },
-    { name: 'Features', path: '/#features' },
-    { name: 'Lawyers', path: '/lawyers' },
     { name: 'About', path: '/about' },
-    { name: 'LexArena ⚖️', path: '/learn' },
+    { name: 'Features', path: '/#features' },
   ];
 
-  // On /learn and /chat pages, always show dark navbar (no transparent state)
-  const navDark = isLearnPage || isChatPage || isScrolled;
-  // On /learn page, hide global navbar when scrolled down
-  const hideNav = isLearnPage && isScrolled;
+  const productLinks = [
+    { name: 'AI Tools', path: '/chat' },
+    { name: 'Lawyers', path: '/lawyers' },
+    { name: 'LexArena ⚖️', path: '/learn' },
+    { name: 'Dashboard', path: '/dashboard' },
+  ];
+
+  const navLinks = isProductSection ? productLinks : landingLinks;
+
+  // Navbar Styling Logic
+  // Show dark background if:
+  // 1. We are on a product page
+  // 2. We are on the About/Lawyers page (regardless of scroll)
+  // 3. We have scrolled down on the landing page
+  const navDark = isProductSection || isAboutPage || isLawyersPage || isScrolled;
+  
+  // Auto-hide Navbar only on LexArena when scrolled
+  const hideNav = false; // Always visible as per request
 
   return (
-    <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${navDark ? 'bg-forest/95 backdrop-blur-md py-3 shadow-lg' : 'bg-transparent py-5'}`}
+    <nav className={`fixed top-0 w-full z-50 transition-all duration-300 ${navDark ? (isProductSection ? 'bg-forest shadow-lg' : 'bg-forest/95 backdrop-blur-md shadow-lg') : 'bg-transparent'} py-3`}
       style={{ transform: hideNav ? 'translateY(-100%)' : 'translateY(0)' }}
     >
       <div className="max-w-7xl mx-auto px-6 flex justify-between items-center">
@@ -55,7 +76,21 @@ const Navbar = () => {
         {/* Desktop Nav */}
         <div className="hidden md:flex items-center gap-8">
           {navLinks.map((link) => (
-            <Link key={link.name} to={link.path} className="text-offwhite/80 hover:text-lime transition-colors font-medium">
+            <Link 
+              key={link.name} 
+              to={link.path} 
+              onClick={(e) => {
+                if (link.name === 'Home' && location.pathname === '/') {
+                  e.preventDefault();
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                } else if (link.name === 'Features' && location.pathname === '/') {
+                  e.preventDefault();
+                  const target = document.getElementById('features');
+                  if (target) target.scrollIntoView({ behavior: 'smooth' });
+                }
+              }}
+              className="text-offwhite/80 hover:text-lime transition-colors font-medium cursor-pointer"
+            >
               {link.name}
             </Link>
           ))}
@@ -63,10 +98,22 @@ const Navbar = () => {
 
         <div className="hidden md:flex items-center gap-4">
           <button className="text-offwhite hover:text-white font-medium p-2"><Globe size={20} /></button>
-          <Link to="/login" className="text-offwhite hover:text-white font-medium px-4">Login</Link>
-          <Link to="/signup" className="bg-lime hover:bg-lime-hover text-forest font-bold px-6 py-2.5 rounded-lg transition-all shadow-md">
-            Try for Free
-          </Link>
+          {isLandingSection && (
+            <>
+              <Link to="/login" className="text-offwhite hover:text-white font-medium px-4">Login</Link>
+              <Link to="/signup" className="bg-lime hover:bg-lime-hover text-forest font-bold px-6 py-2.5 rounded-lg transition-all shadow-md">
+                Try for Free
+              </Link>
+            </>
+          )}
+          {isProductSection && (
+            <div className="flex items-center gap-3 pl-4 border-l border-white/10">
+              <div className="w-8 h-8 rounded-full bg-lime flex items-center justify-center text-forest font-bold text-xs">YS</div>
+              <button className="text-offwhite/60 hover:text-white transition-colors">
+                <LogOut size={18} />
+              </button>
+            </div>
+          )}
         </div>
 
         {/* Mobile Toggle */}
@@ -85,13 +132,37 @@ const Navbar = () => {
             className="absolute top-full left-0 w-full bg-forest border-t border-white/10 p-6 flex flex-col gap-6 md:hidden"
           >
             {navLinks.map((link) => (
-              <Link key={link.name} to={link.path} onClick={() => setMobileMenuOpen(false)} className="text-xl text-offwhite">
+              <Link 
+                key={link.name} 
+                to={link.path} 
+                onClick={(e) => {
+                  setMobileMenuOpen(false);
+                  if (link.name === 'Home' && location.pathname === '/') {
+                    e.preventDefault();
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  } else if (link.name === 'Features' && location.pathname === '/') {
+                    e.preventDefault();
+                    const target = document.getElementById('features');
+                    if (target) target.scrollIntoView({ behavior: 'smooth' });
+                  }
+                }} 
+                className="text-xl text-offwhite"
+              >
                 {link.name}
               </Link>
             ))}
             <div className="flex flex-col gap-4 pt-4 border-t border-white/10">
-              <Link to="/login" className="text-offwhite text-lg font-medium">Login</Link>
-              <Link to="/signup" className="bg-lime text-forest font-bold px-6 py-3 rounded-lg text-center">Try for Free</Link>
+              {isLandingSection && (
+                <>
+                  <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="text-offwhite text-lg font-medium">Login</Link>
+                  <Link to="/signup" onClick={() => setMobileMenuOpen(false)} className="bg-lime text-forest font-bold px-6 py-3 rounded-lg text-center">Try for Free</Link>
+                </>
+              )}
+              {isProductSection && (
+                <button className="flex items-center gap-3 text-offwhite/60 py-2">
+                  <LogOut size={20} /> Logout
+                </button>
+              )}
             </div>
           </motion.div>
         )}
