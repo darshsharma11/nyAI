@@ -7,7 +7,6 @@ import ChatPage from './pages/ChatPage';
 import DocumentsPage from './pages/DocumentsPage';
 import LawyersPage from './pages/LawyersPage';
 import DashboardPage from './pages/DashboardPage';
-import PricingPage from './pages/PricingPage';
 import AboutPage from './pages/AboutPage';
 import AuthPage from './pages/AuthPage';
 
@@ -28,7 +27,6 @@ const Navbar = () => {
     { name: 'Home', path: '/' },
     { name: 'Features', path: '/#features' },
     { name: 'Lawyers', path: '/lawyers' },
-    { name: 'Pricing', path: '/pricing' },
     { name: 'About', path: '/about' },
   ];
 
@@ -277,7 +275,6 @@ function App() {
         <Route path="/documents" element={<DocumentsPage />} />
         <Route path="/lawyers" element={<LawyersPage />} />
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/pricing" element={<PricingPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/login" element={<AuthPage />} />
         <Route path="/signup" element={<AuthPage />} />
