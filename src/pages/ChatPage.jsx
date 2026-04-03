@@ -6,9 +6,10 @@ import {
   ChevronRight, Search, Upload, CheckCircle2, 
   AlertTriangle, X, Download, Copy, Play, Zap, Phone,
   Clock, History, LayoutDashboard, Database, HardDrive,
-  FileText, ShieldCheck, ArrowRight
+  FileText, ShieldCheck, ArrowRight, Handshake
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { jsPDF } from 'jspdf';
 
 // --- Sub-components for Tools ---
 
@@ -223,6 +224,9 @@ const DocumentAnalyzer = () => {
 const DocumentGenerator = () => {
   const [step, setStep] = useState(1);
   const [selectedType, setSelectedType] = useState(null);
+  const [formData, setFormData] = useState({});
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedDoc, setGeneratedDoc] = useState("");
 
   const docTypes = [
     { id: 'rental', title: 'Rental Agreement', icon: FileText, desc: 'E-stamped residential lease contracts' },
@@ -232,6 +236,92 @@ const DocumentGenerator = () => {
     { id: 'will', title: 'Will Draft', icon: History, desc: 'Drafting your last will & testament' },
     { id: 'rti', title: 'RTI Application', icon: MessageSquare, desc: 'Information requests from govt bodies' },
   ];
+
+  const docFields = {
+    rental: [
+      { name: 'landlordName', label: 'Landlord Full Name', placeholder: 'e.g. Rahul Sharma' },
+      { name: 'tenantName', label: 'Tenant Full Name', placeholder: 'e.g. Priya Singh' },
+      { name: 'propertyAddress', label: 'Property Address', placeholder: 'Full address of the rental property' },
+      { name: 'rentAmount', label: 'Monthly Rent Amount (₹)', placeholder: '25000', type: 'number' },
+      { name: 'depositAmount', label: 'Security Deposit (₹)', placeholder: '100000', type: 'number' },
+      { name: 'term', label: 'Agreement Term (Months)', placeholder: '11', type: 'number' }
+    ],
+    notice: [
+      { name: 'senderName', label: 'Your Full Name', placeholder: 'e.g. Amit Kumar' },
+      { name: 'receiverName', label: 'Recipient Full Name', placeholder: 'e.g. ABC Corp' },
+      { name: 'reason', label: 'Reason for Notice', placeholder: 'e.g. Non-payment of salary, breach of contract' },
+      { name: 'details', label: 'Specific Details', placeholder: 'Dates, amounts, and other relevant info' }
+    ],
+    affidavit: [
+      { name: 'deponentName', label: 'Deponent Full Name', placeholder: 'e.g. Sunny Varma' },
+      { name: 'fatherName', label: 'Father/Spouse Name', placeholder: 'e.g. Rajesh Varma' },
+      { name: 'address', label: 'Permanent Address', placeholder: 'Your residential address' },
+      { name: 'purpose', label: 'Purpose of Affidavit', placeholder: 'e.g. Name change, Address proof' }
+    ],
+    poa: [
+      { name: 'principalName', label: 'Principal (Giver) Name', placeholder: 'e.g. Vikram Malhotra' },
+      { name: 'agentName', label: 'Attorney (Receiver) Name', placeholder: 'e.g. Neha Malhotra' },
+      { name: 'powers', label: 'Specific Powers Delegated', placeholder: 'e.g. Manage property, bank transactions' }
+    ],
+    will: [
+      { name: 'testatorName', label: 'Testator (Owner) Name', placeholder: 'e.g. Baldev Raj' },
+      { name: 'beneficiaryName', label: 'Primary Beneficiary', placeholder: 'e.g. Simran Kaur' },
+      { name: 'assets', label: 'Details of Assets', placeholder: 'Describe properties, bank accounts, etc.' }
+    ],
+    rti: [
+      { name: 'applicantName', label: 'Applicant Name', placeholder: 'e.g. Darshan Sharma' },
+      { name: 'departmentName', label: 'Public Authority/Dept', placeholder: 'e.g. Municipal Corporation of Delhi' },
+      { name: 'infoRequired', label: 'Information Requested', placeholder: 'Specific details you need from the department' }
+    ]
+  };
+
+  const handleInputChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  const handleGenerate = async () => {
+    setIsGenerating(true);
+    setStep(3);
+    try {
+      const response = await fetch("http://localhost:5000/generate-document", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ type: selectedType.title, details: formData })
+      });
+      const data = await response.json();
+      setGeneratedDoc(data.content);
+    } catch (err) {
+      console.error(err);
+      setGeneratedDoc("Failed to generate document. Please try again.");
+    } finally {
+      setIsGenerating(false);
+    }
+  };
+
+  const downloadPDF = () => {
+    if (!generatedDoc) return;
+    const doc = new jsPDF();
+    
+    // PDF Styling
+    const pageWidth = doc.internal.pageSize.getWidth();
+    const margin = 20;
+    const maxLineWidth = pageWidth - margin * 2;
+    
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(18);
+    doc.text(selectedType.title.toUpperCase(), pageWidth / 2, 20, { align: "center" });
+    
+    doc.setLineWidth(0.5);
+    doc.line(margin, 25, pageWidth - margin, 25);
+    
+    doc.setFont("times", "normal");
+    doc.setFontSize(11);
+    
+    const splitText = doc.splitTextToSize(generatedDoc, maxLineWidth);
+    doc.text(splitText, margin, 40);
+    
+    doc.save(`${selectedType.id}_draft_nyAI.pdf`);
+  };
 
   return (
     <div className="h-full bg-white p-10 overflow-y-auto">
@@ -262,7 +352,7 @@ const DocumentGenerator = () => {
             {docTypes.map(type => (
               <button 
                 key={type.id}
-                onClick={() => { setSelectedType(type); setStep(2); }}
+                onClick={() => { setSelectedType(type); setFormData({}); setStep(2); }}
                 className={`group p-8 rounded-[2rem] border-2 text-left transition-all hover:scale-[1.02] ${selectedType?.id === type.id ? 'border-lime bg-lime/5 shadow-xl' : 'border-gray-50 bg-white shadow-sm hover:border-lime/30'}`}
               >
                 <div className={`w-14 h-14 rounded-2xl flex items-center justify-center mb-6 shadow-inner ${selectedType?.id === type.id ? 'bg-lime text-forest' : 'bg-gray-50 text-lime group-hover:bg-lime group-hover:text-forest'}`}>
@@ -283,25 +373,21 @@ const DocumentGenerator = () => {
           >
              <h3 className="text-2xl font-bold mb-8 heading-display">{selectedType?.title} Details</h3>
              <div className="space-y-6">
-                <div>
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-4 mb-2 block">Landlord Full Name</label>
-                  <input type="text" placeholder="e.g. Rahul Sharma" className="w-full bg-white border border-gray-100 rounded-full px-6 py-4 focus:border-lime focus:ring-0" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-4 mb-2 block">Monthly Rent Amount (₹)</label>
-                  <input type="number" placeholder="25000" className="w-full bg-white border border-gray-100 rounded-full px-6 py-4 focus:border-lime focus:ring-0" />
-                </div>
-                <div>
-                  <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-4 mb-2 block">Agreement Language</label>
-                  <select className="w-full bg-white border border-gray-100 rounded-full px-6 py-4 focus:border-lime focus:ring-0 appearance-none">
-                    <option>English</option>
-                    <option>Hindi (हिन्दी)</option>
-                    <option>Marathi (मराठी)</option>
-                  </select>
-                </div>
+                {docFields[selectedType.id].map(field => (
+                  <div key={field.name}>
+                    <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest pl-4 mb-2 block">{field.label}</label>
+                    <input 
+                      type={field.type || 'text'} 
+                      name={field.name}
+                      placeholder={field.placeholder} 
+                      onChange={handleInputChange}
+                      className="w-full bg-white border border-gray-100 rounded-full px-6 py-4 focus:border-lime focus:ring-0" 
+                    />
+                  </div>
+                ))}
                 <div className="flex gap-4 pt-6">
                   <button onClick={() => setStep(1)} className="flex-1 py-4 border border-forest/10 rounded-full font-black uppercase tracking-widest text-forest/40">Back</button>
-                  <button onClick={() => setStep(3)} className="flex-[2] py-4 bg-forest text-lime rounded-full font-black uppercase tracking-widest">Generate Draft</button>
+                  <button onClick={handleGenerate} className="flex-[2] py-4 bg-forest text-lime rounded-full font-black uppercase tracking-widest">Generate Draft</button>
                 </div>
              </div>
           </motion.div>
@@ -315,31 +401,41 @@ const DocumentGenerator = () => {
           >
             <div className="flex-1 bg-white p-12 rounded-[2rem] border border-gray-100 shadow-[inset_0_0_50px_rgba(0,0,0,0.02)] min-h-[600px] relative">
                <div className="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-lime via-forest to-lime opacity-20"></div>
-               <div className="text-center mb-10">
-                 <h4 className="text-2xl font-serif font-bold uppercase border-b-2 border-forest inline-block pb-1">RENTAL AGREEMENT</h4>
-               </div>
-               <p className="text-sm leading-[2] text-gray-700 italic">
-                 THIS RENTAL AGREEMENT is made at Mumbai on this 3rd day of April 2026, BETWEEN Shri. Rahul Sharma, hereinafter referred to as the LANDLORD, and ...
-                 <br/><br/>
-                 WHEREAS the Landlord is the absolute owner of the premises...
-                 <br/><br/>
-                 NOW THIS AGREEMENT WITNESSETH AS FOLLOWS...
-               </p>
+               {isGenerating ? (
+                 <div className="h-full flex flex-col items-center justify-center space-y-4">
+                   <div className="w-12 h-12 border-4 border-lime border-t-transparent rounded-full animate-spin"></div>
+                   <p className="text-gray-400 font-bold uppercase tracking-widest text-xs">AI is drafting your {selectedType.title}...</p>
+                 </div>
+               ) : (
+                 <>
+                  <div className="text-center mb-10">
+                    <h4 className="text-2xl font-serif font-bold uppercase border-b-2 border-forest inline-block pb-1">{selectedType.title}</h4>
+                  </div>
+                  <div className="text-sm leading-[1.8] text-gray-700 whitespace-pre-wrap font-serif">
+                    {generatedDoc}
+                  </div>
+                 </>
+               )}
             </div>
 
-            <div className="w-full lg:w-80 space-y-4">
-              <div className="bg-forest p-8 rounded-[2rem] text-white">
-                <ShieldCheck size={40} className="text-lime mb-6" />
-                <h4 className="text-xl font-bold mb-2">Ready to use</h4>
-                <p className="text-xs text-white/50 leading-relaxed mb-8 font-medium">This draft follows standard Model Tenancy Act guidelines for Maharashtra.</p>
-                <button className="w-full bg-lime text-forest py-4 rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2">
-                  <Download size={16} /> Download PDF
+            {!isGenerating && (
+              <div className="w-full lg:w-80 space-y-4">
+                <div className="bg-forest p-8 rounded-[2rem] text-white">
+                  <ShieldCheck size={40} className="text-lime mb-6" />
+                  <h4 className="text-xl font-bold mb-2">Ready to use</h4>
+                  <p className="text-xs text-white/50 leading-relaxed mb-8 font-medium">This draft is AI-generated based on your details. Review before use.</p>
+                  <button 
+                    onClick={downloadPDF}
+                    className="w-full bg-lime text-forest py-4 rounded-xl font-black uppercase tracking-widest text-xs flex items-center justify-center gap-2 hover:bg-white transition-colors"
+                  >
+                    <Download size={16} /> Download PDF
+                  </button>
+                </div>
+                <button onClick={() => setStep(2)} className="w-full py-4 border border-gray-100 rounded-[2rem] font-black uppercase tracking-widest text-xs text-gray-400 hover:bg-gray-50 transition-colors">
+                  Edit Details
                 </button>
               </div>
-              <button onClick={() => setStep(2)} className="w-full py-4 border border-gray-100 rounded-[2rem] font-black uppercase tracking-widest text-xs text-gray-400 hover:bg-gray-50 transition-colors">
-                Edit Details
-              </button>
-            </div>
+            )}
           </motion.div>
         )}
       </div>
@@ -350,13 +446,28 @@ const DocumentGenerator = () => {
 const CasePredictor = () => {
   const [analyzed, setAnalyzed] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [description, setDescription] = useState("");
+  const [selectedCategory, setSelectedCategory] = useState("Labour");
+  const [predictionData, setPredictionData] = useState(null);
 
-  const handleAnalyze = () => {
+  const handleAnalyze = async () => {
+    if (!description.trim()) return;
     setIsAnalyzing(true);
-    setTimeout(() => {
-      setIsAnalyzing(false);
+    setAnalyzed(false);
+    try {
+      const response = await fetch("http://localhost:5000/predict-case", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: `Category: ${selectedCategory}. ${description}` })
+      });
+      const data = await response.json();
+      setPredictionData(data);
       setAnalyzed(true);
-    }, 2000);
+    } catch(err) {
+      console.error(err);
+    } finally {
+      setIsAnalyzing(false);
+    }
   };
 
   return (
@@ -369,6 +480,8 @@ const CasePredictor = () => {
 
         <section className="bg-white p-10 rounded-[3rem] border border-gray-100 shadow-sm mb-10">
           <textarea 
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
             placeholder="Describe your case briefly... (e.g. My employer terminated me without giving the 3-month notice promised in my contract.)"
             className="w-full h-40 bg-gray-50 rounded-[2rem] p-8 border-none focus:ring-2 focus:ring-lime/50 text-gray-800 placeholder-gray-300 font-medium resize-none mb-6"
           />
@@ -376,7 +489,11 @@ const CasePredictor = () => {
           <div className="flex flex-wrap gap-3 mb-10">
             <p className="w-full text-[10px] font-black text-gray-300 uppercase tracking-widest mb-2 px-4">Selection Category</p>
             {['Criminal', 'Civil', 'Family', 'Property', 'Labour'].map(tag => (
-              <button key={tag} className="px-6 py-2 rounded-full border border-gray-100 text-xs font-bold text-gray-400 hover:border-lime hover:text-forest transition-all">
+              <button 
+                key={tag} 
+                onClick={() => setSelectedCategory(tag)}
+                className={`px-6 py-2 rounded-full border text-xs font-bold transition-all ${selectedCategory === tag ? 'bg-lime text-forest border-lime' : 'border-gray-100 text-gray-400 hover:border-lime hover:text-forest'}`}
+              >
                 {tag}
               </button>
             ))}
@@ -400,24 +517,24 @@ const CasePredictor = () => {
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
               <div className="col-span-1 md:col-span-1 bg-forest rounded-[3rem] p-10 flex flex-col items-center justify-center text-center">
                 <div className="relative w-32 h-32 mb-6">
-                   <svg className="w-full h-full transform -rotate-90">
+                    <svg className="w-full h-full transform -rotate-90">
                       <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" className="text-white/5" />
-                      <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray={364} strokeDashoffset={364 * (1 - 0.74)} className="text-lime" strokeLinecap="round" />
+                      <circle cx="64" cy="64" r="58" stroke="currentColor" strokeWidth="8" fill="transparent" strokeDasharray={364} strokeDashoffset={364 * (1 - (predictionData?.confidenceScale || 0) / 100)} className="text-lime" strokeLinecap="round" />
                    </svg>
                    <div className="absolute inset-0 flex items-center justify-center">
-                      <span className="text-3xl font-bold text-white heading-display tracking-tighter">74%</span>
+                      <span className="text-3xl font-bold text-white heading-display tracking-tighter">{predictionData?.winProbability || "0%"}</span>
                    </div>
                 </div>
                 <h4 className="text-white font-bold">Win Probability</h4>
-                <p className="text-[10px] text-lime font-black uppercase tracking-widest mt-1">Strong Case</p>
+                <p className="text-[10px] text-lime font-black uppercase tracking-widest mt-1">{predictionData?.verdictType || "Unknown"}</p>
               </div>
 
               <div className="col-span-1 md:col-span-2 grid grid-cols-1 sm:grid-cols-2 gap-4">
                  {[
-                   { label: 'Avg. Duration', val: '14 Months', icon: Clock },
-                   { label: 'Similar Cases', val: '312 Found', icon: Database },
-                   { label: 'Complexity', val: 'Medium-High', icon: AlertTriangle },
-                   { label: 'Success Action', val: 'Mediation', icon: Handshake }
+                   { label: 'Avg. Duration', val: predictionData?.avgDuration || 'Unknown', icon: Clock },
+                   { label: 'Similar Cases', val: predictionData?.similarCases || '0 Found', icon: Database },
+                   { label: 'Complexity', val: predictionData?.complexity || 'Medium', icon: AlertTriangle },
+                   { label: 'Success Action', val: predictionData?.successAction || 'Mediation', icon: Handshake }
                  ].map((stat, i) => (
                    <div key={i} className="bg-white p-6 rounded-[2rem] border border-gray-100 flex items-center gap-4">
                       <div className="w-12 h-12 bg-lime/10 rounded-2xl flex items-center justify-center text-lime"><stat.icon size={20} /></div>
@@ -435,8 +552,8 @@ const CasePredictor = () => {
                <div className="flex justify-between items-center relative gap-4">
                   <div className="absolute h-1 bg-lime/20 top-4 left-0 w-full z-0"></div>
                   <div className="absolute h-1 bg-lime top-4 left-0 w-1/2 z-0"></div>
-                  {['File FIR', 'District Court', 'High Court', 'Supreme'].map((step, i) => (
-                    <div key={step} className="relative z-10 flex flex-col items-center gap-4 flex-1">
+                  {(Array.isArray(predictionData?.timeline) ? predictionData.timeline : ['File FIR', 'District Court', 'High Court', 'Supreme']).map((step, i) => (
+                    <div key={i} className="relative z-10 flex flex-col items-center gap-4 flex-1">
                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${i <= 1 ? 'bg-lime text-forest' : 'bg-gray-100 text-gray-400'}`}>
                          {i + 1}
                        </div>
