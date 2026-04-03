@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Routes, Route, Link, useLocation } from 'react-router-dom';
+import { Routes, Route, Link, useLocation, Navigate, useNavigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Menu, X, Scale, Bell, Globe, ArrowRight, MessageCircle, FileText, Users, LayoutDashboard, CheckCircle2, AlertTriangle, ShieldCheck, Download, ExternalLink, Play, Search, PlusCircle, History, Settings, LogOut, Phone } from 'lucide-react';
 import LandingPage from './pages/LandingPage';
@@ -12,7 +12,7 @@ import AuthPage from './pages/AuthPage';
 import LegalLiteracyApp from './features/legal-literacy';
 
 // Navbar Component
-const Navbar = () => {
+const Navbar = ({ isLoggedIn, onLogout }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
@@ -59,14 +59,34 @@ const Navbar = () => {
               {link.name}
             </Link>
           ))}
+          {isLoggedIn && (
+            <Link to="/chat" className="text-offwhite/80 hover:text-lime transition-colors font-medium">
+              Dashboard
+            </Link>
+          )}
         </div>
 
         <div className="hidden md:flex items-center gap-4">
           <button className="text-offwhite hover:text-white font-medium p-2"><Globe size={20} /></button>
-          <Link to="/login" className="text-offwhite hover:text-white font-medium px-4">Login</Link>
-          <Link to="/signup" className="bg-lime hover:bg-lime-hover text-forest font-bold px-6 py-2.5 rounded-lg transition-all shadow-md">
-            Try for Free
-          </Link>
+          
+          {isLoggedIn ? (
+            <>
+              <div className="w-px h-6 bg-white/10 mx-2"></div>
+              <button 
+                onClick={onLogout}
+                className="text-offwhite hover:text-white font-bold flex items-center gap-2 px-4 transition-all"
+              >
+                <LogOut size={18} className="text-lime" /> Logout
+              </button>
+            </>
+          ) : (
+            <>
+              <Link to="/login" className="text-offwhite hover:text-white font-medium px-4">Login</Link>
+              <Link to="/signup" className="bg-lime hover:bg-lime-hover text-forest font-bold px-6 py-2.5 rounded-lg transition-all shadow-md">
+                Try for Free
+              </Link>
+            </>
+          )}
         </div>
 
         {/* Mobile Toggle */}
@@ -89,9 +109,20 @@ const Navbar = () => {
                 {link.name}
               </Link>
             ))}
+            {isLoggedIn && (
+              <Link to="/chat" onClick={() => setMobileMenuOpen(false)} className="text-xl text-offwhite">
+                Dashboard
+              </Link>
+            )}
             <div className="flex flex-col gap-4 pt-4 border-t border-white/10">
-              <Link to="/login" className="text-offwhite text-lg font-medium">Login</Link>
-              <Link to="/signup" className="bg-lime text-forest font-bold px-6 py-3 rounded-lg text-center">Try for Free</Link>
+              {isLoggedIn ? (
+                <button onClick={() => { onLogout(); setMobileMenuOpen(false); }} className="text-lime text-xl font-bold text-left">Logout</button>
+              ) : (
+                <>
+                  <Link to="/login" onClick={() => setMobileMenuOpen(false)} className="text-offwhite text-lg font-medium">Login</Link>
+                  <Link to="/signup" onClick={() => setMobileMenuOpen(false)} className="bg-lime text-forest font-bold px-6 py-3 rounded-lg text-center">Try for Free</Link>
+                </>
+              )}
             </div>
           </motion.div>
         )}
@@ -269,29 +300,78 @@ const Footer = () => (
   </footer>
 );
 
+const ProtectedRoute = ({ children, isLoggedIn }) => {
+  if (!isLoggedIn) {
+    return <Navigate to="/login" replace />;
+  }
+  return children;
+};
+
 function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   const location = useLocation();
+  const navigate = useNavigate();
 
   useEffect(() => {
     window.scrollTo(0, 0);
   }, [location.pathname]);
+
+  const handleLogout = () => {
+    setIsLoggedIn(false);
+    navigate('/');
+  };
 
   const isAuthPage = location.pathname === '/login' || location.pathname === '/signup';
   const isChatPage = location.pathname === '/chat';
 
   return (
     <div className="min-h-screen bg-offwhite selection:bg-lime selection:text-forest">
-      {!isAuthPage && <Navbar />}
+      {!isAuthPage && <Navbar isLoggedIn={isLoggedIn} onLogout={handleLogout} />}
       <Routes>
         <Route path="/" element={<LandingPage />} />
-        <Route path="/chat" element={<ChatPage />} />
-        <Route path="/documents" element={<DocumentsPage />} />
-        <Route path="/lawyers" element={<LawyersPage />} />
-        <Route path="/dashboard" element={<DashboardPage />} />
+        <Route 
+          path="/chat" 
+          element={
+            <ProtectedRoute isLoggedIn={isLoggedIn}>
+              <ChatPage />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/documents" 
+          element={
+            <ProtectedRoute isLoggedIn={isLoggedIn}>
+              <DocumentsPage />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/lawyers" 
+          element={
+            <ProtectedRoute isLoggedIn={isLoggedIn}>
+              <LawyersPage />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/dashboard" 
+          element={
+            <ProtectedRoute isLoggedIn={isLoggedIn}>
+              <DashboardPage />
+            </ProtectedRoute>
+          } 
+        />
         <Route path="/about" element={<AboutPage />} />
-        <Route path="/login" element={<AuthPage />} />
-        <Route path="/signup" element={<AuthPage />} />
-        <Route path="/learn" element={<LegalLiteracyApp />} />
+        <Route path="/login" element={<AuthPage setIsLoggedIn={setIsLoggedIn} />} />
+        <Route path="/signup" element={<AuthPage setIsLoggedIn={setIsLoggedIn} />} />
+        <Route 
+          path="/learn" 
+          element={
+            <ProtectedRoute isLoggedIn={isLoggedIn}>
+              <LegalLiteracyApp />
+            </ProtectedRoute>
+          } 
+        />
       </Routes>
       {!(isAuthPage || isChatPage) && <Footer />}
       {!(isAuthPage || isChatPage) && <SOSButton />}
