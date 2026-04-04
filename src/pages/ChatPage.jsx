@@ -10,6 +10,7 @@ import {
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { jsPDF } from 'jspdf';
+import { useTranslation } from 'react-i18next';
 
 // --- Sub-components for Tools ---
 
@@ -137,8 +138,9 @@ const renderMarkdown = (text) => {
 };
 
 const LegalAssistant = () => {
+  const { t, i18n } = useTranslation();
   const [messages, setMessages] = useState([
-    { id: 1, text: "नमस्ते! I'm your nyAI legal assistant powered by AI. How can I help you navigate Indian law today?", isAi: true },
+    { id: 1, text: t('chat.assistant.greeting'), isAi: true },
   ]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
@@ -164,7 +166,8 @@ const LegalAssistant = () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: userMessage,
-          conversationHistory: newMessages.slice(1) // skip the initial greeting
+          conversationHistory: newMessages.slice(1), // skip the initial greeting
+          language: i18n.language
         })
       });
 
@@ -183,7 +186,7 @@ const LegalAssistant = () => {
       console.error("Chat error:", err);
       setMessages(prev => [...prev, {
         id: Date.now() + 1,
-        text: "I'm sorry, I'm having trouble connecting right now. Please check that the backend server is running and try again.",
+        text: t('chat.assistant.errorMsg'),
         isAi: true
       }]);
     } finally {
@@ -192,10 +195,10 @@ const LegalAssistant = () => {
   };
 
   const suggestions = [
-    "What are my tenant rights in Delhi?",
-    "Explain Section 498A in simple terms",
-    "How to file a consumer court case?",
-    "Need a legal notice for non-payment"
+    t('chat.assistant.suggestion1'),
+    t('chat.assistant.suggestion2'),
+    t('chat.assistant.suggestion3'),
+    t('chat.assistant.suggestion4')
   ];
 
   return (
@@ -203,13 +206,13 @@ const LegalAssistant = () => {
       {/* Top Bar */}
       <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-center bg-offwhite/80 backdrop-blur-md sticky top-0 z-10">
         <div>
-          <h2 className="text-3xl font-bold text-gray-900 heading-display lowercase tracking-tighter">Legal Assistant</h2>
-          <p className="text-xs text-gray-400 italic mt-1 font-medium">Powered by Groq • llama-3.3-70b</p>
+          <h2 className="text-3xl font-bold text-gray-900 heading-display lowercase tracking-tighter">{t('chat.assistant.title')}</h2>
+          <p className="text-xs text-gray-400 italic mt-1 font-medium">{t('chat.assistant.subtitle')}</p>
         </div>
         <div className="flex gap-3">
           <div className="px-3 py-1.5 bg-lime/10 border border-lime/30 rounded-full flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-lime animate-pulse"></span>
-            <span className="text-[10px] font-black text-lime uppercase tracking-widest">AI Active</span>
+            <span className="text-[10px] font-black text-lime uppercase tracking-widest">{t('chat.assistant.aiActive')}</span>
           </div>
         </div>
       </div>
@@ -250,7 +253,7 @@ const LegalAssistant = () => {
                   <div className="w-2 h-2 bg-forest/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
                   <div className="w-2 h-2 bg-forest/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
                   <div className="w-2 h-2 bg-forest/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                  <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest ml-3">Analyzing...</span>
+                  <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest ml-3">{t('chat.assistant.analyzing')}</span>
                 </div>
               </div>
             </div>
@@ -259,7 +262,7 @@ const LegalAssistant = () => {
 
         {messages.length === 1 && !isTyping && (
           <div className="pt-10 max-w-2xl mx-auto">
-            <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest mb-4 text-center">Suggested queries</p>
+            <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest mb-4 text-center">{t('chat.assistant.suggestedQueries')}</p>
             <div className="grid grid-cols-2 gap-3">
               {suggestions.map(s => (
                 <button key={s} onClick={() => setInput(s)} className="p-4 rounded-2xl border border-gray-100 bg-gray-50 text-xs font-bold text-gray-500 hover:border-lime/50 hover:text-forest transition-all text-left">
@@ -280,7 +283,7 @@ const LegalAssistant = () => {
               type="text" 
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about rental laws, FIRs, or legal rights..." 
+              placeholder={t('chat.assistant.inputPlaceholder')} 
               className="w-full bg-gray-50 border border-gray-100 rounded-[2rem] px-8 py-5 pr-16 focus:border-lime focus:ring-0 text-gray-800 placeholder-gray-300 font-medium transition-all"
               disabled={isTyping}
             />
@@ -292,7 +295,7 @@ const LegalAssistant = () => {
             </button>
           </form>
           <p className="text-[10px] text-center text-gray-300 font-bold uppercase tracking-widest mt-4">
-            Powered by Groq LLM • Responses are AI-generated and not legal advice.
+            {t('chat.assistant.disclaimer')}
           </p>
         </div>
       </div>
@@ -1065,15 +1068,16 @@ const FakeDocDetector = () => {
 // --- Main ChatPage Component ---
 
 const ChatPage = () => {
-  const [activeTool, setActiveTool] = useState('assistant'); // assistant, analyzer, generator, predictor, detector
+  const { t } = useTranslation();
+  const [activeTool, setActiveTool] = useState('assistant');
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
 
   const tools = [
-    { id: 'assistant', label: 'Legal Assistant', icon: MessageSquare },
-    { id: 'analyzer', label: 'Document Analyzer', icon: FileSearch },
-    { id: 'generator', label: 'Document Generator', icon: FilePlus2 },
-    { id: 'predictor', label: 'Case Predictor', icon: BarChart2 },
-    { id: 'detector', label: 'Fake Doc Detector', icon: ShieldAlert },
+    { id: 'assistant', label: t('chat.sidebar.assistant'), icon: MessageSquare },
+    { id: 'analyzer', label: t('chat.sidebar.analyzer'), icon: FileSearch },
+    { id: 'generator', label: t('chat.sidebar.generator'), icon: FilePlus2 },
+    { id: 'predictor', label: t('chat.sidebar.predictor'), icon: BarChart2 },
+    { id: 'detector', label: t('chat.sidebar.detector'), icon: ShieldAlert },
   ];
 
   const pastCases = ["Sharma v. State (2024)", "Land Dispute — Jaipur", "RTI Appeal #4421"];
@@ -1091,7 +1095,7 @@ const ChatPage = () => {
         {/* Navigation Items */}
         <nav className="flex-1 px-4 py-6 space-y-2 relative z-10 overflow-y-auto no-scrollbar">
           {isSidebarOpen && (
-            <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em] pl-4 mb-6">AI Tools</p>
+            <p className="text-[10px] font-black text-white/30 uppercase tracking-[0.3em] pl-4 mb-6">{t('chat.sidebar.aiTools')}</p>
           )}
           
           {tools.map(tool => (
@@ -1115,7 +1119,7 @@ const ChatPage = () => {
                   className="pl-12 pt-4 pb-4 flex flex-col gap-3"
                 >
                   <p className="text-[11px] font-bold text-lime/60 uppercase tracking-widest flex items-center gap-1">
-                    <History size={12} /> Past Cases
+                    <History size={12} /> {t('chat.sidebar.pastCases')}
                   </p>
                   {pastCases.map(c => (
                     <button key={c} className="text-[12px] font-medium text-white/60 hover:text-white text-left transition-colors truncate">
@@ -1123,7 +1127,7 @@ const ChatPage = () => {
                     </button>
                   ))}
                   <button className="mt-2 text-[11px] font-black text-lime uppercase tracking-widest py-2.5 px-4 border border-lime/30 rounded-full hover:bg-lime/10 transition-all inline-block w-max">
-                    + New Case
+                    {t('chat.sidebar.newCase')}
                   </button>
                 </motion.div>
               )}
@@ -1139,7 +1143,7 @@ const ChatPage = () => {
                <div className="flex-1 min-w-0">
                  <p className="text-xs font-bold text-white truncate lowercase">yogesh sharma</p>
                  <p className="text-[9px] font-black text-white/30 uppercase tracking-[0.15em] flex items-center gap-1">
-                   <Zap size={10} className="text-lime" /> pro member
+                   <Zap size={10} className="text-lime" /> {t('chat.sidebar.proMember')}
                  </p>
                </div>
             )}
