@@ -13,31 +13,182 @@ import { jsPDF } from 'jspdf';
 
 // --- Sub-components for Tools ---
 
+// Markdown renderer helper for AI responses
+const renderMarkdown = (text) => {
+  if (!text) return null;
+  
+  const lines = text.split('\n');
+  const elements = [];
+  let listItems = [];
+  let listType = null; // 'ul' or 'ol'
+  let blockquoteLines = [];
+
+  const flushList = () => {
+    if (listItems.length > 0) {
+      if (listType === 'ol') {
+        elements.push(<ol key={`ol-${elements.length}`} style={{ paddingLeft: '1.5rem', margin: '0.5rem 0', listStyleType: 'decimal' }}>{listItems.map((item, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{formatInline(item)}</li>)}</ol>);
+      } else {
+        elements.push(<ul key={`ul-${elements.length}`} style={{ paddingLeft: '1.5rem', margin: '0.5rem 0', listStyleType: 'disc' }}>{listItems.map((item, i) => <li key={i} style={{ marginBottom: '0.25rem' }}>{formatInline(item)}</li>)}</ul>);
+      }
+      listItems = [];
+      listType = null;
+    }
+  };
+
+  const flushBlockquote = () => {
+    if (blockquoteLines.length > 0) {
+      elements.push(
+        <blockquote key={`bq-${elements.length}`} style={{ borderLeft: '3px solid #A3E635', paddingLeft: '1rem', margin: '0.75rem 0', color: '#4B5563', fontStyle: 'italic', background: 'rgba(163, 230, 53, 0.05)', padding: '0.75rem 1rem', borderRadius: '0 0.5rem 0.5rem 0' }}>
+          {blockquoteLines.map((line, i) => <span key={i}>{formatInline(line)}{i < blockquoteLines.length - 1 && <br />}</span>)}
+        </blockquote>
+      );
+      blockquoteLines = [];
+    }
+  };
+
+  const formatInline = (text) => {
+    if (!text) return text;
+    // Bold
+    const parts = [];
+    const regex = /\*\*(.*?)\*\*/g;
+    let lastIndex = 0;
+    let match;
+    while ((match = regex.exec(text)) !== null) {
+      if (match.index > lastIndex) {
+        parts.push(text.substring(lastIndex, match.index));
+      }
+      parts.push(<strong key={match.index} style={{ fontWeight: 700, color: '#111827' }}>{match[1]}</strong>);
+      lastIndex = regex.lastIndex;
+    }
+    if (lastIndex < text.length) {
+      parts.push(text.substring(lastIndex));
+    }
+    return parts.length > 0 ? parts : text;
+  };
+
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    // Blockquote
+    if (trimmed.startsWith('> ')) {
+      flushList();
+      blockquoteLines.push(trimmed.substring(2));
+      continue;
+    } else {
+      flushBlockquote();
+    }
+
+    // Headings
+    if (trimmed.startsWith('### ')) {
+      flushList();
+      elements.push(<h4 key={`h3-${i}`} style={{ fontSize: '0.95rem', fontWeight: 800, color: '#111827', marginTop: '1rem', marginBottom: '0.35rem' }}>{formatInline(trimmed.substring(4))}</h4>);
+      continue;
+    }
+    if (trimmed.startsWith('## ')) {
+      flushList();
+      elements.push(<h3 key={`h2-${i}`} style={{ fontSize: '1.05rem', fontWeight: 800, color: '#111827', marginTop: '1.15rem', marginBottom: '0.4rem', paddingBottom: '0.25rem', borderBottom: '1px solid #E5E7EB' }}>{formatInline(trimmed.substring(3))}</h3>);
+      continue;
+    }
+    if (trimmed.startsWith('# ')) {
+      flushList();
+      elements.push(<h2 key={`h1-${i}`} style={{ fontSize: '1.15rem', fontWeight: 800, color: '#111827', marginTop: '1.25rem', marginBottom: '0.5rem' }}>{formatInline(trimmed.substring(2))}</h2>);
+      continue;
+    }
+
+    // Horizontal rule
+    if (trimmed === '---' || trimmed === '***') {
+      flushList();
+      elements.push(<hr key={`hr-${i}`} style={{ border: 'none', borderTop: '1px solid #E5E7EB', margin: '0.75rem 0' }} />);
+      continue;
+    }
+
+    // Unordered list
+    if (/^[-*]\s/.test(trimmed)) {
+      if (listType !== 'ul') { flushList(); listType = 'ul'; }
+      listItems.push(trimmed.substring(2));
+      continue;
+    }
+
+    // Ordered list
+    if (/^\d+\.\s/.test(trimmed)) {
+      if (listType !== 'ol') { flushList(); listType = 'ol'; }
+      listItems.push(trimmed.replace(/^\d+\.\s/, ''));
+      continue;
+    }
+
+    // Empty line
+    if (trimmed === '') {
+      flushList();
+      flushBlockquote();
+      elements.push(<div key={`br-${i}`} style={{ height: '0.5rem' }} />);
+      continue;
+    }
+
+    // Normal paragraph
+    flushList();
+    elements.push(<p key={`p-${i}`} style={{ margin: '0.3rem 0', lineHeight: '1.7' }}>{formatInline(trimmed)}</p>);
+  }
+
+  flushList();
+  flushBlockquote();
+
+  return elements;
+};
+
 const LegalAssistant = () => {
   const [messages, setMessages] = useState([
-    { id: 1, text: "नमस्ते! I'm your nyAI legal assistant. How can I help you navigate Indian law today?", isAi: true },
+    { id: 1, text: "नमस्ते! I'm your nyAI legal assistant powered by AI. How can I help you navigate Indian law today?", isAi: true },
   ]);
   const [input, setInput] = useState("");
+  const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef(null);
 
   useEffect(() => {
     scrollRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+  }, [messages, isTyping]);
 
-  const handleSend = (e) => {
+  const handleSend = async (e) => {
     e.preventDefault();
-    if (!input.trim()) return;
-    setMessages([...messages, { id: Date.now(), text: input, isAi: false }]);
-    setInput("");
+    if (!input.trim() || isTyping) return;
     
-    // Auto-reply simulation
-    setTimeout(() => {
-      setMessages(prev => [...prev, { 
-        id: Date.now() + 1, 
-        text: "I've analyzed your query regarding IPC Section 498A. Would you like a simplified breakdown or related case laws?", 
-        isAi: true 
+    const userMessage = input.trim();
+    const newMessages = [...messages, { id: Date.now(), text: userMessage, isAi: false }];
+    setMessages(newMessages);
+    setInput("");
+    setIsTyping(true);
+
+    try {
+      const response = await fetch("http://localhost:5001/api/legal-chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: userMessage,
+          conversationHistory: newMessages.slice(1) // skip the initial greeting
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}));
+        throw new Error(errorData.fallback || "Failed to get response");
+      }
+
+      const data = await response.json();
+      setMessages(prev => [...prev, {
+        id: Date.now() + 1,
+        text: data.text,
+        isAi: true
       }]);
-    }, 1000);
+    } catch (err) {
+      console.error("Chat error:", err);
+      setMessages(prev => [...prev, {
+        id: Date.now() + 1,
+        text: "I'm sorry, I'm having trouble connecting right now. Please check that the backend server is running and try again.",
+        isAi: true
+      }]);
+    } finally {
+      setIsTyping(false);
+    }
   };
 
   const suggestions = [
@@ -53,12 +204,12 @@ const LegalAssistant = () => {
       <div className="px-8 py-6 border-b border-gray-100 flex justify-between items-center bg-offwhite/80 backdrop-blur-md sticky top-0 z-10">
         <div>
           <h2 className="text-3xl font-bold text-gray-900 heading-display lowercase tracking-tighter">Legal Assistant</h2>
-          <p className="text-xs text-gray-400 italic mt-1 font-medium">Ask anything about Indian law</p>
+          <p className="text-xs text-gray-400 italic mt-1 font-medium">Powered by Groq • llama-3.3-70b</p>
         </div>
         <div className="flex gap-3">
           <div className="px-3 py-1.5 bg-lime/10 border border-lime/30 rounded-full flex items-center gap-2">
             <span className="w-1.5 h-1.5 rounded-full bg-lime animate-pulse"></span>
-            <span className="text-[10px] font-black text-lime uppercase tracking-widest">v2.4 Active</span>
+            <span className="text-[10px] font-black text-lime uppercase tracking-widest">AI Active</span>
           </div>
         </div>
       </div>
@@ -73,17 +224,40 @@ const LegalAssistant = () => {
             className={`flex ${msg.isAi ? 'justify-start' : 'justify-end'}`}
           >
             <div className={`max-w-[80%] flex gap-4 ${msg.isAi ? 'flex-row' : 'flex-row-reverse'}`}>
-              <div className={`w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center shadow-lg ${msg.isAi ? 'bg-lime text-forest' : 'bg-forest text-lime'}`}>
+              <div className={`w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center shadow-lg ${msg.isAi ? 'bg-lime text-forest' : 'bg-forest text-lime'}`} style={{ marginTop: '2px' }}>
                 <Scale size={20} />
               </div>
               <div className={`px-6 py-4 rounded-[2rem] shadow-sm text-sm leading-relaxed font-medium ${msg.isAi ? 'bg-white border border-gray-100 rounded-bl-sm text-gray-800' : 'bg-forest text-white rounded-br-sm'}`}>
-                {msg.text}
+                {msg.isAi ? renderMarkdown(msg.text) : msg.text}
               </div>
             </div>
           </motion.div>
         ))}
 
-        {messages.length === 1 && (
+        {/* Typing indicator */}
+        {isTyping && (
+          <motion.div 
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            className="flex justify-start"
+          >
+            <div className="max-w-[80%] flex gap-4 flex-row">
+              <div className="w-10 h-10 rounded-xl flex-shrink-0 flex items-center justify-center shadow-lg bg-lime text-forest" style={{ marginTop: '2px' }}>
+                <Scale size={20} />
+              </div>
+              <div className="px-6 py-5 rounded-[2rem] shadow-sm bg-white border border-gray-100 rounded-bl-sm">
+                <div className="flex gap-1.5 items-center">
+                  <div className="w-2 h-2 bg-forest/40 rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
+                  <div className="w-2 h-2 bg-forest/40 rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
+                  <div className="w-2 h-2 bg-forest/40 rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
+                  <span className="text-[10px] font-bold text-gray-300 uppercase tracking-widest ml-3">Analyzing...</span>
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        )}
+
+        {messages.length === 1 && !isTyping && (
           <div className="pt-10 max-w-2xl mx-auto">
             <p className="text-[10px] font-black text-gray-300 uppercase tracking-widest mb-4 text-center">Suggested queries</p>
             <div className="grid grid-cols-2 gap-3">
@@ -108,13 +282,17 @@ const LegalAssistant = () => {
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask about rental laws, FIRs, or legal rights..." 
               className="w-full bg-gray-50 border border-gray-100 rounded-[2rem] px-8 py-5 pr-16 focus:border-lime focus:ring-0 text-gray-800 placeholder-gray-300 font-medium transition-all"
+              disabled={isTyping}
             />
-            <button className="absolute right-2 top-2 w-12 h-12 bg-forest text-lime rounded-full flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-xl shadow-forest/10">
+            <button 
+              disabled={isTyping}
+              className={`absolute right-2 top-2 w-12 h-12 rounded-full flex items-center justify-center transition-all shadow-xl shadow-forest/10 ${isTyping ? 'bg-gray-300 text-gray-500 cursor-not-allowed' : 'bg-forest text-lime hover:scale-105 active:scale-95'}`}
+            >
               <Send size={20} />
             </button>
           </form>
           <p className="text-[10px] text-center text-gray-300 font-bold uppercase tracking-widest mt-4">
-            Responses are AI-generated and not legal advice.
+            Powered by Groq LLM • Responses are AI-generated and not legal advice.
           </p>
         </div>
       </div>

@@ -311,6 +311,88 @@ app.post('/ai/ask', async (req, res) => {
   }
 });
 
+// ─── GROQ LEGAL ASSISTANT ENDPOINT ───
+
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_BASE_URL = "https://api.groq.com/openai/v1";
+const GROQ_MODEL = "llama-3.3-70b-versatile";
+
+const LEGAL_SYSTEM_PROMPT = `You are an AI Legal Assistant for Indian citizens.
+
+Your responsibilities:
+- Answer legal questions in simple, easy-to-understand language.
+- Help users understand contracts, agreements, and legal documents.
+- Summarize legal text clearly.
+- Help draft simple legal documents like rental agreements, NDAs, employment contracts, and notices.
+- Explain legal rights and procedures clearly.
+- This is specifically for Indian laws.
+- If the law the user asks about differs from state to state, ask the user for their state and give a response based on that.
+
+Formatting rules (VERY IMPORTANT):
+- Use proper markdown formatting in your responses.
+- Use **bold** for important terms, section names, and legal terms.
+- Use headings (## and ###) to organize long answers.
+- Use bullet points (- ) and numbered lists (1. ) where appropriate.
+- Add line breaks between sections for readability.
+- Use > blockquotes for quoting legal provisions.
+- Never give a wall of continuous text. Always break it up.
+- Keep paragraphs short (2-3 sentences max).
+
+Disclaimer: Always remind users that this is general legal information, NOT legal advice, and they should consult a qualified lawyer for specific situations.`;
+
+app.post('/api/legal-chat', async (req, res) => {
+  const { message, conversationHistory = [] } = req.body;
+  if (!message) return res.status(400).json({ error: "Message is required." });
+
+  try {
+    // Build messages array: system prompt + conversation history + new message
+    const messages = [
+      { role: "system", content: LEGAL_SYSTEM_PROMPT },
+      ...conversationHistory.map(msg => ({
+        role: msg.isAi ? "assistant" : "user",
+        content: msg.text
+      })),
+      { role: "user", content: message }
+    ];
+
+    const response = await fetch(`${GROQ_BASE_URL}/chat/completions`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${GROQ_API_KEY}`
+      },
+      body: JSON.stringify({
+        model: GROQ_MODEL,
+        messages: messages,
+        max_tokens: 2048,
+        temperature: 0.7,
+        top_p: 0.9
+      })
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`Groq API Error (${response.status}):`, errorText);
+      throw new Error(`Groq API Error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const aiResponse = data.choices[0]?.message?.content || "I'm sorry, I couldn't process your request right now.";
+
+    res.json({
+      text: aiResponse,
+      model: GROQ_MODEL,
+      usage: data.usage
+    });
+  } catch (err) {
+    console.error("Legal Chat Error:", err.message);
+    res.status(500).json({ 
+      error: "Failed to get response from AI.",
+      fallback: "I'm currently experiencing connection issues. Please try again in a moment. If the problem persists, check your internet connection or contact support."
+    });
+  }
+});
+
 app.post('/ai/generate-scenarios', async (req, res) => {
   const prompt = `Generate 3 unique legal scenarios for India. Return ONLY a valid JSON array. 
 Fields: id (starting from ${scenarios.length + 1}), category, situation, question, options, correctOption, explanation, difficulty.`;
