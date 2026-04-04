@@ -579,6 +579,14 @@ const FakeDocDetector = () => {
 const ChatPage = () => {
   const [activeTool, setActiveTool] = useState('assistant'); // assistant, analyzer, generator, predictor, detector
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [userName, setUserName] = useState("Guest");
+
+  useEffect(() => {
+    const savedName = localStorage.getItem('nyai_user_name');
+    if (savedName) setUserName(savedName);
+  }, []);
+
+  const initials = userName.substring(0, 2).toUpperCase();
 
   const tools = [
     { id: 'assistant', label: 'Legal Assistant', icon: MessageSquare },
@@ -646,10 +654,10 @@ const ChatPage = () => {
         {/* User Section */}
         <div className="p-6 border-t border-white/5 relative z-10 bg-forest-dark/30">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-lime flex items-center justify-center text-forest font-black shadow-lg shadow-lime/10">YS</div>
+            <div className="w-10 h-10 rounded-xl bg-lime flex items-center justify-center text-forest font-black shadow-lg shadow-lime/10">{initials}</div>
             {isSidebarOpen && (
                <div className="flex-1 min-w-0">
-                 <p className="text-xs font-bold text-white truncate lowercase">yogesh sharma</p>
+                 <p className="text-xs font-bold text-white truncate lowercase">{userName}</p>
                  <p className="text-[9px] font-black text-white/30 uppercase tracking-[0.15em] flex items-center gap-1">
                    <Zap size={10} className="text-lime" /> pro member
                  </p>

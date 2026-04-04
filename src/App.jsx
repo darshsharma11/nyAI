@@ -12,7 +12,7 @@ import AuthPage from './pages/AuthPage';
 import LegalLiteracyApp from './features/legal-literacy';
 
 // Navbar Component
-const Navbar = ({ isLoggedIn, onLogout }) => {
+const Navbar = ({ isLoggedIn, onLogout, userName }) => {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const location = useLocation();
@@ -42,7 +42,7 @@ const Navbar = ({ isLoggedIn, onLogout }) => {
 
   const productLinks = [
     { name: 'AI Tools', path: '/chat' },
-    { name: 'Lawyers', path: '/lawyers' },
+    { name: 'Find a Lawyer', path: '/lawyers' },
     { name: 'LexArena ⚖️', path: '/learn' },
     { name: 'Dashboard', path: '/dashboard' },
   ];
@@ -107,7 +107,7 @@ const Navbar = ({ isLoggedIn, onLogout }) => {
 
           {isLoggedIn && (
             <div className="flex items-center gap-3 pl-4 border-l border-white/10">
-              <div className="w-8 h-8 rounded-full bg-lime flex items-center justify-center text-forest font-bold text-xs uppercase">YS</div>
+              <div className="w-8 h-8 rounded-full bg-lime flex items-center justify-center text-forest font-bold text-xs uppercase">{userName ? userName.substring(0, 2) : 'US'}</div>
               <button 
                 onClick={onLogout}
                 className="text-offwhite/60 hover:text-white transition-colors"
@@ -356,15 +356,18 @@ const ProtectedRoute = ({ children, isLoggedIn }) => {
 function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [userEmail, setUserEmail] = useState(null);
+  const [userName, setUserName] = useState('');
   const location = useLocation();
   const navigate = useNavigate();
 
   // Load user from localStorage
   useEffect(() => {
     const savedEmail = localStorage.getItem('nyai_user_email');
+    const savedName = localStorage.getItem('nyai_user_name');
     if (savedEmail) {
       setIsLoggedIn(true);
       setUserEmail(savedEmail);
+      setUserName(savedName || savedEmail.split('@')[0]);
     }
   }, []);
 
@@ -384,7 +387,7 @@ function App() {
 
   return (
     <div className="min-h-screen bg-offwhite selection:bg-lime selection:text-forest">
-      {!isAuthPage && <Navbar isLoggedIn={isLoggedIn} onLogout={handleLogout} />}
+      {!isAuthPage && <Navbar isLoggedIn={isLoggedIn} onLogout={handleLogout} userName={userName} />}
       <Routes>
         <Route path="/" element={<LandingPage />} />
         <Route 

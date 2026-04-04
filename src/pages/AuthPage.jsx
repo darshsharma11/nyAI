@@ -10,20 +10,45 @@ const AuthPage = ({ setIsLoggedIn }) => {
   const [isLogin, setIsLogin] = useState(true);
   const [isLoading, setIsLoading] = useState(false);
   const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [errorMsg, setErrorMsg] = useState("");
   const navigate = useNavigate();
 
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
     setIsLoading(true);
-    // Persist email for user-specific features
-    localStorage.setItem("nyai_user_email", email);
+    setErrorMsg("");
     
-    // Simulate auth
-    setTimeout(() => {
+    try {
+      const endpoint = isLogin ? '/api/auth/login' : '/api/auth/register';
+      const payload = isLogin ? { email, password } : { name, email, password };
+      
+      const res = await fetch(`http://localhost:5000${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload)
+      });
+      
+      const data = await res.json();
+      
+      if (!res.ok) {
+         throw new Error(data.error || "Authentication failed.");
+      }
+      
+      // Persist user details for app state
+      localStorage.setItem("nyai_user_email", data.email);
+      localStorage.setItem("nyai_user_id", data._id);
+      localStorage.setItem("nyai_user_name", data.name);
+      localStorage.setItem("nyai_token", data.token);
+      
       setIsLoading(false);
       setIsLoggedIn(true);
       navigate('/chat');
-    }, 1500);
+    } catch (err) {
+      setErrorMsg(err.message);
+      setIsLoading(false);
+    }
   };
 
   return (
@@ -87,6 +112,13 @@ const AuthPage = ({ setIsLoggedIn }) => {
             </div>
 
             <form onSubmit={handleSubmit} className="space-y-6">
+               {errorMsg && (
+                  <div className="bg-red-50 text-red-500 p-4 rounded-xl text-sm font-bold border border-red-100 flex items-center gap-2">
+                     <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span>
+                     {errorMsg}
+                  </div>
+               )}
+            
                <AnimatePresence mode="wait">
                   {!isLogin && (
                     <motion.div 
@@ -100,8 +132,10 @@ const AuthPage = ({ setIsLoggedIn }) => {
                           <input 
                              type="text" 
                              placeholder="Full Legal Name" 
+                             value={name}
+                             onChange={(e) => setName(e.target.value)}
                              className="w-full bg-gray-50 border border-gray-100 py-6 pl-16 pr-8 rounded-[2rem] text-lg font-medium focus:ring-0 focus:border-lime transition-all focus:bg-white"
-                             required 
+                             required={!isLogin}
                           />
                        </div>
                     </motion.div>
@@ -125,6 +159,8 @@ const AuthPage = ({ setIsLoggedIn }) => {
                   <input 
                      type="password" 
                      placeholder="Password" 
+                     value={password}
+                     onChange={(e) => setPassword(e.target.value)}
                      className="w-full bg-gray-50 border border-gray-100 py-6 pl-16 pr-8 rounded-[2rem] text-lg font-medium focus:ring-0 focus:border-lime transition-all focus:bg-white"
                      required 
                   />

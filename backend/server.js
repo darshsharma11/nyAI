@@ -7,9 +7,12 @@ import cors from 'cors';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import nodemailer from 'nodemailer';
+import mongoose from 'mongoose';
+import jwt from 'jsonwebtoken';
+import User from './models/User.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const USERS_FILE = path.join(__dirname, 'users.json');
 
 const app = express();
 app.use(cors());
@@ -19,9 +22,19 @@ const PORT = 5000;
 
 // ─── AI PROVIDER CONFIG ───
 const getProviders = () => ({
+  OPENROUTER: {
+    url: "https://openrouter.ai/api/v1/chat/completions",
+    model: "meta-llama/llama-3.3-70b-instruct:free",
+    key: process.env.OPENROUTER_API_KEY
+  },
+  GEMINI: {
+    url: "https://generativelanguage.googleapis.com/v1beta/models",
+    model: "gemini-2.0-flash",
+    key: process.env.GEMINI_API_KEY
+  },
   OLLAMA: {
     url: "https://ollama.com/v1/chat/completions",
-    model: "ministral-3:8b", // Efficient cloud model
+    model: "ministral-3:8b",
     key: process.env.OLLAMA_API_KEY
   },
   ANTHROPIC: {
@@ -36,26 +49,57 @@ const getProviders = () => ({
   }
 });
 
-// Load users from disk or init empty
-let users = {};
-try {
-  if (fs.existsSync(USERS_FILE)) {
-    users = JSON.parse(fs.readFileSync(USERS_FILE, 'utf8'));
-    console.log(`Loaded ${Object.keys(users).length} users from disk.`);
-  }
-} catch (e) {
-  console.error("Failed to load users.json:", e.message);
-  users = {};
-}
+// ─── MONGODB CONNECTION ───
+const MONGO_URI = process.env.MONGO_URI || 'mongodb://localhost:27017/nyai';
+mongoose.connect(MONGO_URI)
+  .then(() => console.log('✅ Connected to MongoDB via Mongoose'))
+  .catch(err => console.error('❌ MongoDB Connection Error:', err));
 
-// Helper to save users to disk
-const saveToDisk = () => {
-  try {
-    fs.writeFileSync(USERS_FILE, JSON.stringify(users, null, 2));
-  } catch (e) {
-    console.error("Failed to save users.json:", e.message);
-  }
+// ─── AUTHENTICATION ROUTES ───
+const generateToken = (id) => {
+  return jwt.sign({ id }, process.env.JWT_SECRET || 'nyAI_super_secret_dev_key', {
+    expiresIn: '30d',
+  });
 };
+
+app.post('/api/auth/register', async (req, res) => {
+  const { name, email, password } = req.body;
+  try {
+    const userExists = await User.findOne({ email });
+    if (userExists) return res.status(400).json({ error: "User already exists with that email" });
+
+    const user = await User.create({ name, email, password });
+    res.status(201).json({
+      _id: user._id,
+      name: user.name,
+      email: user.email,
+      token: generateToken(user._id),
+    });
+  } catch (err) {
+    console.error("Register error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/auth/login', async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const user = await User.findOne({ email });
+    if (user && (await user.matchPassword(password))) {
+      res.json({
+        _id: user._id,
+        name: user.name,
+        email: user.email,
+        token: generateToken(user._id),
+      });
+    } else {
+      res.status(401).json({ error: "Invalid email or password" });
+    }
+  } catch (err) {
+    console.error("Login error:", err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Static mock categories and scenarios
 let scenarios = [
@@ -121,20 +165,7 @@ let scenarios = [
   }
 ];
 
-// Helper to init user
-const initUser = (userId) => {
-  if (!users[userId]) {
-    users[userId] = {
-      totalPoints: 0,
-      completedScenarios: [],
-      correctAnswers: 0,
-      totalAnswers: 0,
-      badges: []
-    };
-    saveToDisk();
-  }
-};
-
+// Removed static initialization (initUser) for progress logic
 // ─── SMART AI DISPATCHER ───
 
 async function callOllama(prompt, maxTokens, config) {
@@ -205,6 +236,53 @@ async function callOpenAI(prompt, maxTokens, config) {
   return data.choices[0].message.content;
 }
 
+// ─── GEMINI CALLER ───
+
+async function callGemini(prompt, maxTokens, config) {
+  const url = `${config.url}/${config.model}:generateContent?key=${config.key}`;
+  const resp = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      contents: [{ parts: [{ text: prompt }] }],
+      generationConfig: { maxOutputTokens: maxTokens }
+    })
+  });
+  if (!resp.ok) {
+    const errorText = await resp.text();
+    console.error(`Gemini Response Error (${resp.status}):`, errorText);
+    throw new Error(`Gemini Error: ${errorText}`);
+  }
+  const data = await resp.json();
+  return data.candidates[0].content.parts[0].text;
+}
+
+// ─── OPENROUTER CALLER (OpenAI-compatible) ───
+
+async function callOpenRouter(prompt, maxTokens, config) {
+  const resp = await fetch(config.url, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${config.key}`,
+      "HTTP-Referer": "https://nyai.legal",
+      "X-Title": "nyAI Legal Connect"
+    },
+    body: JSON.stringify({
+      model: config.model,
+      messages: [{ role: "user", content: prompt }],
+      max_tokens: maxTokens
+    })
+  });
+  if (!resp.ok) {
+    const errorText = await resp.text();
+    console.error(`OpenRouter Response Error (${resp.status}):`, errorText);
+    throw new Error(`OpenRouter Error: ${errorText}`);
+  }
+  const data = await resp.json();
+  return data.choices[0].message.content;
+}
+
 // ─── SMART AI DISPATCHER HELPER ───
 
 async function handleAIRequest(prompt, maxTokens = 1000) {
@@ -212,15 +290,33 @@ async function handleAIRequest(prompt, maxTokens = 1000) {
   let result = null;
   let engine = "None";
 
-  // 1. Try Ollama (Primary Free)
-  if (PROVIDERS.OLLAMA.key) {
+  // 1. Try OpenRouter (Primary - Multi-model gateway)
+  if (PROVIDERS.OPENROUTER.key) {
+    try {
+      result = await callOpenRouter(prompt, maxTokens, PROVIDERS.OPENROUTER);
+      engine = `OpenRouter (${PROVIDERS.OPENROUTER.model})`;
+      console.log(`✅ AI composed via ${engine}`);
+    } catch (e) { console.warn("OpenRouter fallback triggered:", e.message); }
+  }
+
+  // 2. Try Gemini (Google AI Free)
+  if (!result && PROVIDERS.GEMINI.key) {
+    try {
+      result = await callGemini(prompt, maxTokens, PROVIDERS.GEMINI);
+      engine = "Google Gemini";
+      console.log(`✅ AI composed via ${engine}`);
+    } catch (e) { console.warn("Gemini fallback triggered:", e.message); }
+  }
+
+  // 3. Try Ollama
+  if (!result && PROVIDERS.OLLAMA.key) {
     try {
       result = await callOllama(prompt, maxTokens, PROVIDERS.OLLAMA);
       engine = "Ollama Cloud";
     } catch (e) { console.warn("Ollama fallback triggered:", e.message); }
   }
 
-  // 2. Try Anthropic (Legal Premium)
+  // 4. Try Anthropic
   if (!result && PROVIDERS.ANTHROPIC.key) {
     try {
       result = await callAnthropic(prompt, maxTokens, PROVIDERS.ANTHROPIC);
@@ -228,7 +324,7 @@ async function handleAIRequest(prompt, maxTokens = 1000) {
     } catch (e) { console.warn("Anthropic fallback triggered:", e.message); }
   }
 
-  // 3. Try OpenAI (Fast Alternative)
+  // 5. Try OpenAI
   if (!result && PROVIDERS.OPENAI.key) {
     try {
       result = await callOpenAI(prompt, maxTokens, PROVIDERS.OPENAI);
@@ -269,72 +365,255 @@ Fields: id (starting from ${scenarios.length + 1}), category, situation, questio
 
 // ─── DATA ROUTES ───
 
+app.get('/api/lawyers', async (req, res) => {
+  const { lat, lng, radius = 50000, query = "lawyer" } = req.query;
+  const apiKey = process.env.VITE_GOOGLE_PLACES_API_KEY;
+  
+  if (!apiKey) {
+    return res.status(400).json({ error: "Missing VITE_GOOGLE_PLACES_API_KEY in .env" });
+  }
+
+  const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&location=${lat},${lng}&radius=${radius}&key=${apiKey}`;
+  
+  try {
+    const response = await fetch(url);
+    const data = await response.json();
+    res.json(data);
+  } catch (error) {
+    console.error("Google Places REST Error:", error);
+    res.status(500).json({ error: "Failed to fetch places" });
+  }
+});
+
 app.get('/scenarios', (req, res) => {
   res.json(scenarios);
 });
 
-app.post('/progress', (req, res) => {
-  const { userId = 'guest', scenarioId, isCorrect } = req.body;
-  initUser(userId);
-  const user = users[userId];
+app.post('/progress', async (req, res) => {
+  const { userId, scenarioId, isCorrect } = req.body;
+  try {
+    let user = null;
+    if (userId && mongoose.isValidObjectId(userId)) {
+      user = await User.findById(userId);
+    }
+    
+    // Fallback for guest
+    if (!user) {
+       return res.json({
+          totalPoints: isCorrect ? 10 : 0, level: "Beginner", badges: ["Guest Mode"], completedScenarios: [scenarioId], accuracy: 100, totalCasesClosed: 1, activeEngine: "Guest"
+       });
+    }
 
-  if (!user.completedScenarios.includes(scenarioId)) {
-    user.completedScenarios.push(scenarioId);
-    user.totalAnswers += 1;
-    if (isCorrect) {
-      user.correctAnswers += 1;
-      user.totalPoints += 10;
+    if (!user.completedScenarios.includes(scenarioId)) {
+      user.completedScenarios.push(scenarioId);
+      user.totalAnswers += 1;
+      if (isCorrect) {
+        user.correctAnswers += 1;
+        user.totalPoints += 10;
+      }
+      if (user.completedScenarios.length === 1 && !user.badges.includes("First Step")) {
+        user.badges.push("First Step");
+      }
+      if (user.correctAnswers >= 5 && !user.badges.includes("Sharp Mind")) {
+        user.badges.push("Sharp Mind");
+      }
+      if (user.completedScenarios.length >= 10 && !user.badges.includes("Legal Eagle")) {
+        user.badges.push("Legal Eagle");
+      }
+      await user.save();
     }
-    if (user.completedScenarios.length === 1 && !user.badges.includes("First Step")) {
-      user.badges.push("First Step");
-    }
-    if (user.correctAnswers >= 5 && !user.badges.includes("Sharp Mind")) {
-      user.badges.push("Sharp Mind");
-    }
-    if (user.completedScenarios.length >= 10 && !user.badges.includes("Legal Eagle")) {
-      user.badges.push("Legal Eagle");
-    }
-    saveToDisk();
+
+    let level = "Beginner";
+    if (user.totalPoints >= 51 && user.totalPoints <= 150) level = "Aware";
+    if (user.totalPoints > 150) level = "Advanced";
+
+    const providers = getProviders();
+    const engine = providers.OLLAMA.key ? "Ollama Cloud" : (providers.OPENAI.key ? "OpenAI" : "None");
+
+    res.json({
+      totalPoints: user.totalPoints,
+      level,
+      badges: user.badges,
+      completedScenarios: user.completedScenarios,
+      accuracy: user.totalAnswers > 0 ? Math.round((user.correctAnswers / user.totalAnswers) * 100) : 0,
+      totalCasesClosed: user.completedScenarios.length,
+      activeEngine: engine
+    });
+  } catch (err) {
+    console.error("Progress Error:", err);
+    res.status(500).json({ error: "Failed to update progress" });
   }
-
-  let level = "Beginner";
-  if (user.totalPoints >= 51 && user.totalPoints <= 150) level = "Aware";
-  if (user.totalPoints > 150) level = "Advanced";
-
-  const providers = getProviders();
-  const engine = providers.OLLAMA.key ? "Ollama Cloud" : (providers.OPENAI.key ? "OpenAI" : "None");
-
-  res.json({
-    totalPoints: user.totalPoints,
-    level,
-    badges: user.badges,
-    completedScenarios: user.completedScenarios,
-    accuracy: user.totalAnswers > 0 ? Math.round((user.correctAnswers / user.totalAnswers) * 100) : 0,
-    totalCasesClosed: user.completedScenarios.length,
-    activeEngine: engine
-  });
 });
 
-app.get('/progress/:userId', (req, res) => {
+app.get('/progress/:userId', async (req, res) => {
   const { userId } = req.params;
-  initUser(userId);
-  const user = users[userId];
-  let level = "Beginner";
-  if (user.totalPoints >= 51 && user.totalPoints <= 150) level = "Aware";
-  if (user.totalPoints > 150) level = "Advanced";
+  try {
+    let user = null;
+    if (userId && mongoose.isValidObjectId(userId)) {
+      user = await User.findById(userId);
+    }
 
-  const providers = getProviders();
-  const engine = providers.OLLAMA.key ? "Ollama Cloud" : (providers.OPENAI.key ? "OpenAI" : "None");
+    if (!user) {
+      return res.json({
+        totalPoints: 0, level: "Beginner", badges: [], completedScenarios: [], accuracy: 0, totalCasesClosed: 0, activeEngine: "Guest"
+      });
+    }
 
-  res.json({
-    totalPoints: user.totalPoints,
-    level,
-    badges: user.badges,
-    completedScenarios: user.completedScenarios,
-    accuracy: user.totalAnswers > 0 ? Math.round((user.correctAnswers / user.totalAnswers) * 100) : 0,
-    totalCasesClosed: user.completedScenarios.length,
-    activeEngine: engine
+    let level = "Beginner";
+    if (user.totalPoints >= 51 && user.totalPoints <= 150) level = "Aware";
+    if (user.totalPoints > 150) level = "Advanced";
+
+    const providers = getProviders();
+    const engine = providers.OLLAMA.key ? "Ollama Cloud" : (providers.OPENAI.key ? "OpenAI" : "None");
+
+    res.json({
+      totalPoints: user.totalPoints,
+      level,
+      badges: user.badges,
+      completedScenarios: user.completedScenarios,
+      accuracy: user.totalAnswers > 0 ? Math.round((user.correctAnswers / user.totalAnswers) * 100) : 0,
+      totalCasesClosed: user.completedScenarios.length,
+      activeEngine: engine
+    });
+  } catch (err) {
+    console.error("Fetch Progress Error:", err);
+    res.status(500).json({ error: "Failed to fetch progress" });
+  }
+});
+
+// ─── EMAIL TRANSPORTER ───
+const createEmailTransporter = () => {
+  const user = process.env.EMAIL_USER;
+  const pass = process.env.EMAIL_PASS;
+  
+  if (!user || !pass) {
+    console.warn("⚠️  EMAIL_USER or EMAIL_PASS not set in .env — email sending will fail.");
+    return null;
+  }
+  
+  return nodemailer.createTransport({
+    service: 'gmail',
+    auth: { user, pass }
   });
+};
+
+// ─── SEND LAWYER EMAIL ENDPOINT ───
+app.post('/api/send-lawyer-email', async (req, res) => {
+  const { clientInfo, answers, lawyer, category } = req.body;
+  
+  if (!clientInfo || !lawyer) {
+    return res.status(400).json({ success: false, error: "Missing client or lawyer information." });
+  }
+  
+  // Build the AI prompt to compose the email
+  const answersText = Object.entries(answers || {})
+    .map(([key, value]) => `- ${key.replace(/_/g, ' ').toUpperCase()}: ${value}`)
+    .join('\n');
+  
+  const composePrompt = `You are a professional legal assistant for nyAI, an Indian legal-tech platform.
+Compose a formal, professional email to a lawyer notifying them about a new client inquiry.
+
+LAWYER DETAILS:
+- Name: ${lawyer.name}
+- Specialty: ${lawyer.specialty || category}
+- City: ${lawyer.city || 'India'}
+
+CLIENT DETAILS:
+- Name: ${clientInfo.name}
+- Phone: ${clientInfo.phone}
+- Email: ${clientInfo.email}
+- City: ${clientInfo.city}
+
+CASE CATEGORY: ${category}
+
+CASE DETAILS PROVIDED BY CLIENT:
+${answersText}
+
+INSTRUCTIONS:
+1. Write a professional email body (not including subject line).
+2. Address the lawyer formally (Dear ${lawyer.name}).
+3. Introduce the client and their legal matter concisely.
+4. Summarize the case details provided in a structured, easy-to-read format.
+5. Include the client's contact information clearly.
+6. End with a request for the advocate to reach out to the client at their earliest convenience.
+7. Sign off as "nyAI Legal Connect Platform".
+8. Keep the tone professional, respectful, and concise.
+9. Do NOT add any HTML tags, just plain text.`;
+
+  try {
+    // Step 1: Compose the email using AI
+    let emailBody;
+    try {
+      const { text } = await handleAIRequest(composePrompt, 1500);
+      emailBody = text;
+    } catch (aiError) {
+      // Fallback: compose manually if AI fails
+      console.warn("AI compose failed, using manual template:", aiError.message);
+      emailBody = `Dear ${lawyer.name},
+
+Greetings from nyAI Legal Connect Platform.
+
+A new client has submitted a consultation request through our platform for your expertise in ${category}. Below are the details:
+
+CLIENT INFORMATION:
+• Name: ${clientInfo.name}
+• Phone: ${clientInfo.phone}
+• Email: ${clientInfo.email}
+• City: ${clientInfo.city}
+
+CASE DETAILS (${category}):
+${answersText}
+
+We kindly request you to review the above information and reach out to the client at your earliest convenience.
+
+Thank you for being a trusted advocate on our platform.
+
+Warm regards,
+nyAI Legal Connect Platform
+"Democratizing access to justice for every Indian citizen."`;
+    }
+
+    // Step 2: Send the email
+    const transporter = createEmailTransporter();
+    
+    if (!transporter) {
+      console.log("─── EMAIL WOULD BE SENT (SMTP not configured) ───");
+      console.log(`TO: ${lawyer.email}`);
+      console.log(`SUBJECT: New Client Inquiry — ${category} | ${clientInfo.name} via nyAI`);
+      console.log(`BODY:\n${emailBody}`);
+      console.log("─── END EMAIL ───");
+      
+      return res.json({ 
+        success: true, 
+        message: "Email composed successfully (SMTP not configured — logged to console).",
+        preview: emailBody
+      });
+    }
+
+    const mailOptions = {
+      from: `"${clientInfo.name} via nyAI" <${process.env.EMAIL_USER}>`,
+      to: lawyer.email,
+      replyTo: clientInfo.email,
+      subject: `New Client Inquiry — ${category} | ${clientInfo.name} via nyAI`,
+      text: emailBody
+    };
+
+    const info = await transporter.sendMail(mailOptions);
+    console.log(`✅ Email sent to ${lawyer.email}: ${info.messageId}`);
+    
+    res.json({ 
+      success: true, 
+      message: `Email successfully sent to ${lawyer.name}.`,
+      messageId: info.messageId
+    });
+    
+  } catch (error) {
+    console.error("Email send error:", error);
+    res.status(500).json({ 
+      success: false, 
+      error: `Failed to send email: ${error.message}` 
+    });
+  }
 });
 
 app.listen(PORT, () => {
