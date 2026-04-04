@@ -341,13 +341,32 @@ Formatting rules (VERY IMPORTANT):
 Disclaimer: Always remind users that this is general legal information, NOT legal advice, and they should consult a qualified lawyer for specific situations.`;
 
 app.post('/api/legal-chat', async (req, res) => {
-  const { message, conversationHistory = [] } = req.body;
+  const { message, conversationHistory = [], language = 'en' } = req.body;
   if (!message) return res.status(400).json({ error: "Message is required." });
+
+  // Map language codes to full language names for the LLM
+  const LANG_MAP = {
+    en: null, // default, no extra instruction needed
+    hi: 'Hindi (हिन्दी, Devanagari script)',
+    ta: 'Tamil (தமிழ், Tamil script)',
+    te: 'Telugu (తెలుగు, Telugu script)',
+    bn: 'Bengali (বাংলা, Bengali script)',
+    mr: 'Marathi (मराठी, Devanagari script)',
+    gu: 'Gujarati (ગુજરાતી, Gujarati script)',
+    kn: 'Kannada (ಕನ್ನಡ, Kannada script)',
+    ml: 'Malayalam (മലയാളം, Malayalam script)',
+    pa: 'Punjabi (ਪੰਜਾਬੀ, Gurmukhi script)'
+  };
+
+  let systemPrompt = LEGAL_SYSTEM_PROMPT;
+  if (language !== 'en' && LANG_MAP[language]) {
+    systemPrompt += `\n\nIMPORTANT LANGUAGE INSTRUCTION: You MUST respond ENTIRELY in ${LANG_MAP[language]}. Use the native script throughout your response. Do NOT use English except for proper nouns, legal section numbers, or act names. The user has selected ${LANG_MAP[language]} as their preferred language.`;
+  }
 
   try {
     // Build messages array: system prompt + conversation history + new message
     const messages = [
-      { role: "system", content: LEGAL_SYSTEM_PROMPT },
+      { role: "system", content: systemPrompt },
       ...conversationHistory.map(msg => ({
         role: msg.isAi ? "assistant" : "user",
         content: msg.text
