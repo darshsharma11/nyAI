@@ -104,6 +104,7 @@ export default function ModuleList({ userEmail }) {
   const [aiModules, setAiModules] = useState([]);
   const [userTopic, setUserTopic] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
+  const [genError, setGenError] = useState('');
 
   // AI Rights Explainer State (Bottom Explainer)
   const [aiQuery, setAiQuery] = useState('');
@@ -114,6 +115,7 @@ export default function ModuleList({ userEmail }) {
   const generateAIModule = async () => {
     if (!userTopic.trim()) return;
     setIsGenerating(true);
+    setGenError('');
     
     try {
       const prompt = `You are a legal education content writer for India.
@@ -143,6 +145,7 @@ Respond ONLY with a JSON object:
       }
     } catch (err) {
       console.error('AI Module Generation error:', err);
+      setGenError("The AI encountered an issue drafting this scroll. Try rephrasing your topic.");
     } finally {
       setIsGenerating(false);
     }
@@ -227,6 +230,12 @@ Under 150 words.`;
           {isGenerating ? "📜 Drafting..." : "📜 Draft Scroll"}
         </button>
       </div>
+
+      {genError && (
+        <div style={{ maxWidth: '1000px', margin: '0 auto 32px', padding: '16px', background: '#fef2f2', borderLeft: '4px solid #dc2626', borderRadius: '12px', color: '#991b1b', fontWeight: 500 }}>
+          ⚠️ {genError}
+        </div>
+      )}
 
       <div style={{
         display: 'grid',

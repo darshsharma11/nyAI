@@ -34,11 +34,20 @@ export async function askClaude(prompt, maxTokens = 1000) {
  * Parse a JSON response from Claude, handling markdown code fences.
  */
 export function parseJSONResponse(raw) {
-  const clean = raw.replace(/```json|```/g, "").trim();
+  if (typeof raw !== 'string') return raw;
+  
+  // Extract JSON object by finding the outermost curly braces
+  const match = raw.match(/\{[\s\S]*\}/);
+  if (!match) {
+    console.error("No JSON braces found in raw content:", raw);
+    throw new Error("No JSON object found");
+  }
+
+  const clean = match[0];
   try {
     return JSON.parse(clean);
   } catch (e) {
-    console.error("JSON Parse Error on content:", clean);
+    console.error("JSON Parse Error on extracted content:", clean);
     throw e;
   }
 }
